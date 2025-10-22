@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🥗 Nutrition Database - Professional Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.4.0/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --bg: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border: #475569;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --shadow: rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ========================================
+           SCROLLBAR
+           ======================================== */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark);
+        }
+
+        /* ========================================
+           HEADER
+           ======================================== */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 2rem;
+            box-shadow: 0 10px 30px var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stats-mini {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ========================================
+           CONTAINER
+           ======================================== */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 5px 15px var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 10px 25px var(--shadow);
+            border-color: var(--primary);
+        }
+
+        /* ========================================
+           SEARCH & FILTERS
+           ======================================== */
+        .search-section {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 768px) {
+            .search-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            color: var(--text);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        /* ========================================
+           BUTTONS
+           ======================================== */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        /* ========================================
+           TABS
+           ======================================== */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-btn:hover {
+            color: var(--text);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* ========================================
+           GRID LAYOUTS
+           ======================================== */
+        .grid {
+            display: grid;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
+        /* ========================================
+           TABLES
+           ======================================== */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        table thead {
+            background: var(--bg);
+            position: sticky;
+            top: 0;
+        }
+
+        table th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 700;
+            color: var(--primary-light);
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        table tbody tr {
+            transition: all 0.3s ease;
+        }
+
+        table tbody tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-primary {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary-light);
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        /* ========================================
+           FOOD CARDS
+           ======================================== */
+        .food-card {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .food-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 10px 25px var(--shadow);
+            transform: translateY(-5px);
+        }
+
+        .food-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .food-category {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            width: fit-content;
+        }
+
+        .nutrition-mini {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            font-size: 0.85rem;
+        }
+
+        .nutrition-item {
+            background: var(--bg);
+            padding: 0.75rem;
+            border-radius: 6px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .nutrition-label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .nutrition-value {
+            font-weight: 700;
+            color: var(--primary-light);
+            font-size: 1rem;
+        }
+
+        /* ========================================
+           MODALS
+           ======================================== */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid var(--border);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        .modal-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 2rem;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close-btn:hover {
+            color: var(--danger);
+        }
+
+        /* ========================================
+           PAGINATION
+           ======================================== */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .pagination button {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .pagination button.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        .pagination button:hover:not(.active) {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* ========================================
+           LOADING & EMPTY STATES
+           ======================================== */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* ========================================
+           ALERTS
+           ======================================== */
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 2px solid var(--success);
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 2px solid var(--danger);
+        }
+
+        /* ========================================
+           STAT BOXES
+           ======================================== */
+        .stat-box {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-box:hover {
+            border-color: var(--primary);
+        }
+
+        .stat-box h3 {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-box .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-light);
+        }
+
+        /* ========================================
+           CHARTS
+           ======================================== */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+
+        /* ========================================
+           RESPONSIVE
+           ======================================== */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .stats-mini {
+                justify-content: center;
+                gap: 1rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .card {
+                padding: 1rem;
+            }
+
+            .search-section {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                overflow-x: auto;
+            }
+
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.8rem;
+            }
+
+            table th, table td {
+                padding: 0.5rem;
+            }
+
+            .modal-content {
+                width: 95%;
+                padding: 1.5rem;
+            }
+        }
+
+        /* ========================================
+           ANIMATIONS
+           ======================================== */
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card, .food-card {
+            animation: slideUp 0.3s ease;
+        }
+
+        /* ========================================
+           UTILITY
+           ======================================== */
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mt-3 { margin-top: 1.5rem; }
+
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .mb-3 { margin-bottom: 1.5rem; }
+
+        .text-center { text-align: center; }
+        .text-muted { color: var(--text-muted); }
+        .text-primary { color: var(--primary); }
+
+        .flex { display: flex; }
+        .justify-between { justify-content: space-between; }
+        .items-center { align-items: center; }
+        .gap-1 { gap: 0.5rem; }
+        .gap-2 { gap: 1rem; }
+
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-content">
+            <h1>🥗 Nutrition Database</h1>
+            <div class="stats-mini">
+                <div class="stat-item">
+                    <div class="stat-number" id="total-categories">14</div>
+                    <div class="stat-label">Categories</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="total-foods">1,400</div>
+                    <div class="stat-label">Foods</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="total-records">1,373</div>
+                    <div class="stat-label">Records</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="container">
+        <!-- TABS -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('search')">🔍 Search & Filter</button>
+            <button class="tab-btn" onclick="switchTab('browse')">📂 Browse</button>
+            <button class="tab-btn" onclick="switchTab('analysis')">📊 Analysis</button>
+            <button class="tab-btn" onclick="switchTab('top')">⭐ Top Foods</button>
+        </div>
+
+        <!-- TAB 1: SEARCH -->
+        <div id="search" class="tab-content active">
+            <div class="card mb-3">
+                <div class="search-section">
+                    <div class="input-group">
+                        <label for="search-input">🔎 Search Food</label>
+                        <input type="text" id="search-input" placeholder="e.g., chicken, apple, salmon...">
+                    </div>
+                    <div class="input-group">
+                        <label for="category-filter">📁 Category</label>
+                        <select id="category-filter">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>💪 Actions</label>
+                        <div class="flex gap-1">
+                            <button class="btn btn-primary btn-sm" onclick="searchFoods()">Search</button>
+                            <button class="btn btn-secondary btn-sm" onclick="exportResults()">📥 Export CSV</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="results-section" style="display: none;">
+                <div id="results-content"></div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+
+            <div id="no-results" class="empty-state" style="display: none;">
+                <h3>🔍 Start searching</h3>
+                <p>Enter a food name or select a category to see results</p>
+            </div>
+        </div>
+
+        <!-- TAB 2: BROWSE -->
+        <div id="browse" class="tab-content">
+            <div class="grid grid-4" id="categories-grid"></div>
+        </div>
+
+        <!-- TAB 3: ANALYSIS -->
+        <div id="analysis" class="tab-content">
+            <div class="grid grid-3">
+                <div class="stat-box">
+                    <h3>Average Calories</h3>
+                    <div class="value" id="avg-calories">277</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Average Protein</h3>
+                    <div class="value" id="avg-protein">7.9g</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Data Completeness</h3>
+                    <div class="value" id="data-completeness">100%</div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <h3 style="margin-bottom: 1rem;">📊 Nutrition Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="macroChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <h3 style="margin-bottom: 1rem;">📈 Top Categories by Average Calories</h3>
+                <div class="chart-container">
+                    <canvas id="caloriesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: TOP FOODS -->
+        <div id="top" class="tab-content">
+            <div class="grid grid-2 mb-3">
+                <div class="card">
+                    <h3 style="margin-bottom: 1rem;">🔥 Highest Calorie</h3>
+                    <div id="top-calories"></div>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom: 1rem;">💪 Highest Protein</h3>
+                    <div id="top-protein"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 1rem;">🌾 Highest Fiber</h3>
+                <div id="top-fiber"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FOR FOOD DETAILS -->
+    <div id="foodModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-food-name">Food Name</h2>
+                <button class="close-btn" onclick="closeFoodModal()">&times;</button>
+            </div>
+            <div id="modal-body">
+                <!-- Details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // INITIALIZATION
+        // ============================================================
+        let currentPage = 1;
+        let currentSearchTerm = '';
+        let currentCategory = '';
+        let macroChart = null;
+        let caloriesChart = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCategories();
+            loadTopFoods();
+            loadAnalysis();
+        });
+
+        // ============================================================
+        // TAB SWITCHING
+        // ============================================================
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // ============================================================
+        // CATEGORIES
+        // ============================================================
+        async function loadCategories() {
+            try {
+                const response = await axios.get('/api/categories');
+                const categories = response.data.categories;
+
+                // Populate dropdown
+                const dropdown = document.getElementById('category-filter');
+                categories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat.category_id;
+                    option.textContent = `${cat.name} (${cat.food_count})`;
+                    dropdown.appendChild(option);
+                });
+
+                // Create browse cards
+                const grid = document.getElementById('categories-grid');
+                categories.forEach(cat => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.style.cursor = 'pointer';
+                    card.innerHTML = `
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">
+                            ${getCategoryEmoji(cat.name)}
+                        </div>
+                        <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">${cat.name}</h3>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">${cat.food_count} foods</p>
+                    `;
+                    card.onclick = () => browseCategoryFoods(cat.category_id, cat.name);
+                    grid.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
+        }
+
+        function getCategoryEmoji(category) {
+            const emojis = {
+                'Vegetables': '🥬',
+                'Fruits': '🍎',
+                'Grains & Cereals': '🌾',
+                'Meat & Poultry': '🍗',
+                'Fish & Seafood': '🐟',
+                'Dairy & Eggs': '🥚',
+                'Nuts & Seeds': '🥜',
+                'Oils & Fats': '🫒',
+                'Beverages': '🥤',
+                'Condiments & Sauces': '🍯',
+                'Snacks': '🍿',
+                'Desserts': '🍰',
+                'Prepared Foods': '🍲',
+                'Fast Food': '🍔'
+            };
+            return emojis[category] || '📦';
+        }
+
+        function browseCategoryFoods(categoryId, categoryName) {
+            switchTab('search');
+            document.getElementById('category-filter').value = categoryId;
+            searchFoods();
+        }
+
+        // ============================================================
+        // SEARCH FUNCTIONALITY
+        // ============================================================
+        async function searchFoods() {
+            currentSearchTerm = document.getElementById('search-input').value;
+            currentCategory = document.getElementById('category-filter').value;
+            currentPage = 1;
+
+            if (!currentSearchTerm && !currentCategory) {
+                document.getElementById('no-results').style.display = 'block';
+                document.getElementById('results-section').style.display = 'none';
+                return;
+            }
+
+            try {
+                const response = await axios.get('/api/foods', {
+                    params: {
+                        search: currentSearchTerm,
+                        category: currentCategory,
+                        page: currentPage
+                    }
+                });
+
+                if (response.data.foods.length === 0) {
+                    document.getElementById('no-results').style.display = 'block';
+                    document.getElementById('results-section').style.display = 'none';
+                    document.getElementById('no-results').innerHTML = '<h3>😕 No foods found</h3><p>Try a different search term or category</p>';
+                    return;
+                }
+
+                displayResults(response.data.foods);
+                displayPagination(response.data.total, response.data.limit);
+                document.getElementById('results-section').style.display = 'block';
+                document.getElementById('no-results').style.display = 'none';
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+
+        function displayResults(foods) {
+            const container = document.getElementById('results-content');
+            container.innerHTML = '';
+
+            const table = document.createElement('div');
+            table.className = 'table-wrapper';
+            table.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Food</th>
+                            <th>Category</th>
+                            <th>Calories</th>
+                            <th>Protein</th>
+                            <th>Fat</th>
+                            <th>Carbs</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${foods.map(food => `
+                            <tr>
+                                <td><strong>${food.name}</strong></td>
+                                <td><span class="badge badge-primary">${food.category}</span></td>
+                                <td>${formatValue(food.calories)} kcal</td>
+                                <td>${formatValue(food.protein_g)}g</td>
+                                <td>${formatValue(food.fat_g)}g</td>
+                                <td>${formatValue(food.carbohydrates_g)}g</td>
+                                <td><button class="btn btn-primary btn-sm" onclick="showFoodDetails(${food.food_id})">View</button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.appendChild(table);
+        }
+
+        function displayPagination(total, limit) {
+            const totalPages = Math.ceil(total / limit);
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
+
+            for (let i = 1; i <= totalPages; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.className = i === currentPage ? 'active' : '';
+                btn.onclick = () => {
+                    currentPage = i;
+                    searchFoods();
+                    window.scrollTo(0, 0);
+                };
+                pagination.appendChild(btn);
+            }
+        }
+
+        async function exportResults() {
+            if (!currentSearchTerm && !currentCategory) {
+                alert('Please search for foods first');
+                return;
+            }
+
+            const url = `/api/export-csv?search=${currentSearchTerm}&category=${currentCategory}`;
+            window.location.href = url;
+        }
+
+        // ============================================================
+        // MODAL & DETAILS
+        // ============================================================
+        async function showFoodDetails(foodId) {
+            try {
+                const response = await axios.get(`/api/food/${foodId}`);
+                const food = response.data.food;
+
+                document.getElementById('modal-food-name').textContent = food.name;
+                document.getElementById('modal-body').innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Category</p>
+                        <p style="font-weight: 600; font-size: 1.1rem;">${food.category}</p>
+                    </div>
+
+                    ${food.description ? `
+                        <div style="margin-bottom: 1rem;">
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Description</p>
+                            <p>${food.description}</p>
+                        </div>
+                    ` : ''}
+
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Serving Size</p>
+                        <p style="font-weight: 600;">${food.serving_size} (${food.serving_weight_g}g)</p>
+                    </div>
+
+                    <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">📊 Nutrition Facts</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        ${[
+                            { label: 'Calories', value: food.calories, unit: 'kcal' },
+                            { label: 'Protein', value: food.protein_g, unit: 'g' },
+                            { label: 'Fat', value: food.fat_g, unit: 'g' },
+                            { label: 'Carbs', value: food.carbohydrates_g, unit: 'g' },
+                            { label: 'Fiber', value: food.fiber_g, unit: 'g' },
+                            { label: 'Sugar', value: food.sugar_g, unit: 'g' },
+                            { label: 'Sodium', value: food.sodium_mg, unit: 'mg' },
+                            { label: 'Cholesterol', value: food.cholesterol_mg, unit: 'mg' },
+                            { label: 'Calcium', value: food.calcium_mg, unit: 'mg' },
+                            { label: 'Iron', value: food.iron_mg, unit: 'mg' },
+                            { label: 'Vitamin C', value: food.vitamin_c_mg, unit: 'mg' },
+                            { label: 'Vitamin D', value: food.vitamin_d_iu, unit: 'IU' }
+                        ].map(item => `
+                            <div style="background: var(--bg); padding: 1rem; border-radius: 6px; border-left: 3px solid var(--primary);">
+                                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem; text-transform: uppercase;">${item.label}</p>
+                                <p style="font-weight: 700; font-size: 1.2rem; color: var(--primary-light);">${formatValue(item.value)} <span style="font-size: 0.85rem;">${item.unit}</span></p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                document.getElementById('foodModal').classList.add('active');
+            } catch (error) {
+                console.error('Error loading food details:', error);
+            }
+        }
+
+        function closeFoodModal() {
+            document.getElementById('foodModal').classList.remove('active');
+        }
+
+        // ============================================================
+        // TOP FOODS
+        // ============================================================
+        async function loadTopFoods() {
+            try {
+                const [calories, protein, fiber] = await Promise.all([
+                    axios.get('/api/top-foods?metric=calories&limit=10'),
+                    axios.get('/api/top-foods?metric=protein&limit=10'),
+                    axios.get('/api/top-foods?metric=fiber&limit=10')
+                ]);
+
+                displayTopFoods(calories.data.foods, 'calories', '#top-calories');
+                displayTopFoods(protein.data.foods, 'protein_g', '#top-protein');
+                displayTopFoods(fiber.data.foods, 'fiber_g', '#top-fiber');
+            } catch (error) {
+                console.error('Error loading top foods:', error);
+            }
+        }
+
+        function displayTopFoods(foods, metric, selector) {
+            const container = document.querySelector(selector);
+            container.innerHTML = foods.map((food, index) => `
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
+                    <div style="background: var(--primary); color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0;">
+                        ${index + 1}
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="font-weight: 600; margin-bottom: 0.25rem;">${food.name}</p>
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">${food.category}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="font-weight: 700; color: var(--primary-light); font-size: 1.1rem;">${formatValue(food[metric])}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================================
+        // ANALYSIS & CHARTS
+        // ============================================================
+        async function loadAnalysis() {
+            try {
+                const response = await axios.get('/api/categories');
+                const categories = response.data.categories;
+
+                // Get category stats and create charts
+                const stats = [];
+                for (const cat of categories) {
+                    const response = await axios.get(`/api/category-stats/${cat.category_id}`);
+                    if (response.data.stats) {
+                        stats.push(response.data.stats);
+                    }
+                }
+
+                createMacroChart(stats);
+                createCaloriesChart(stats);
+            } catch (error) {
+                console.error('Error loading analysis:', error);
+            }
+        }
+
+        function createMacroChart(stats) {
+            const ctx = document.getElementById('macroChart').getContext('2d');
+            
+            const proteinPercent = ((stats.reduce((sum, s) => sum + (s.avg_protein * 4), 0) / stats.reduce((sum, s) => sum + s.avg_calories, 0)) * 100).toFixed(1);
+            const fatPercent = ((stats.reduce((sum, s) => sum + (s.avg_fat * 9), 0) / stats.reduce((sum, s) => sum + s.avg_calories, 0)) * 100).toFixed(1);
+            const carbPercent = ((stats.reduce((sum, s) => sum + (s.avg_carbs * 4), 0) / stats.reduce((sum, s) => sum + s.avg_calories, 0)) * 100).toFixed(1);
+
+            macroChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Protein', 'Fat', 'Carbs'],
+                    datasets: [{
+                        data: [proteinPercent, fatPercent, carbPercent],
+                        backgroundColor: ['#10b981', '#f59e0b', '#6366f1'],
+                        borderColor: 'var(--bg-secondary)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: 'var(--text)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createCaloriesChart(stats) {
+            const ctx = document.getElementById('caloriesChart').getContext('2d');
+            
+            const sortedStats = stats.sort((a, b) => b.avg_calories - a.avg_calories).slice(0, 10);
+            
+            caloriesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedStats.map(s => s.category),
+                    datasets: [{
+                        label: 'Average Calories',
+                        data: sortedStats.map(s => s.avg_calories),
+                        backgroundColor: '#6366f1',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            labels: { color: 'var(--text)' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: 'var(--text)' },
+                            grid: { color: 'var(--border)' }
+                        },
+                        y: {
+                            ticks: { color: 'var(--text)' },
+                            grid: { color: 'var(--border)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================================
+        // UTILITIES
+        // ============================================================
+        function formatValue(value) {
+            if (value === null || value === undefined) return '—';
+            return typeof value === 'number' ? value.toFixed(2) : value;
+        }
+
+        // Close modal on outside click
+        window.onclick = function(event) {
+            const modal = document.getElementById('foodModal');
+            if (event.target == modal) {
+                modal.classList.remove('active');
+            }
+        }
+    </script>
+</body>
+</html>

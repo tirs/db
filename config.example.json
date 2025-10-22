@@ -1,0 +1,57 @@
+{
+  "database": {
+    "host": "srv1539.hstgr.io",
+    "port": 3306,
+    "user": "u280406916_nutrition",
+    "password": "Mysqlnutrition200",
+    "database": "u280406916_nutrition",
+    "charset": "utf8mb4",
+    "timezone": "UTC"
+  },
+  "connection_pool": {
+    "min_connections": 5,
+    "max_connections": 20,
+    "acquire_timeout": 30000,
+    "idle_timeout": 900000,
+    "connection_timeout": 5000
+  },
+  "security": {
+    "password_hashing_algorithm": "bcrypt",
+    "password_hashing_rounds": 12,
+    "session_timeout_minutes": 60,
+    "max_login_attempts": 5,
+    "lockout_duration_minutes": 15
+  },
+  "features": {
+    "enable_barcode_scanning": true,
+    "enable_recipe_sharing": true,
+    "enable_social_features": false,
+    "enable_premium_features": false
+  },
+  "backup": {
+    "enabled": true,
+    "frequency_hours": 24,
+    "retention_days": 30,
+    "backup_path": "C:\\Backups\\Database",
+    "compression": "gzip"
+  },
+  "logging": {
+    "level": "INFO",
+    "enable_query_logging": false,
+    "enable_audit_logging": true,
+    "log_path": "C:\\Logs\\Database",
+    "max_log_size_mb": 100,
+    "retention_days": 90
+  },
+  "monitoring": {
+    "enabled": true,
+    "check_interval_seconds": 60,
+    "alert_email": "admin@example.com",
+    "slow_query_threshold_ms": 1000
+  },
+  "export": {
+    "max_records_per_file": 10000,
+    "supported_formats": ["csv", "json", "xlsx"],
+    "default_format": "csv"
+  }
+}
