@@ -22,190 +22,237 @@ st.set_page_config(
 )
 
 # Database configuration
-DB_CONFIG = {
-    'host': '82.197.82.46',
-    'user': 'u280406916_nutrition',
-    'password': 'Mutsokoti08@',
-    'database': 'u280406916_nutrition',
-    'port': 3306
-}
+def get_db_config():
+    """Get database config from secrets or environment"""
+    try:
+        return {
+            'host': st.secrets["database"]["host"],
+            'user': st.secrets["database"]["user"],
+            'password': st.secrets["database"]["password"],
+            'database': st.secrets["database"]["database"],
+            'port': st.secrets["database"]["port"]
+        }
+    except:
+        # Fallback to hardcoded (for local dev only)
+        return {
+            'host': '82.197.82.46',
+            'user': 'u280406916_nutrition',
+            'password': 'Mutsokoti08@',
+            'database': 'u280406916_nutrition',
+            'port': 3306
+        }
 
-@st.cache_resource
 def get_db_connection():
-    """Get database connection"""
-    return mysql.connector.connect(**DB_CONFIG)
+    """Get fresh database connection (no caching to prevent timeouts)"""
+    try:
+        config = get_db_config()
+        conn = mysql.connector.connect(**config)
+        # Verify connection is alive
+        if not conn.is_connected():
+            conn.reconnect()
+        return conn
+    except Exception as e:
+        st.error(f"❌ Database connection failed: {str(e)}")
+        st.stop()
 
 @st.cache_data(ttl=3600)
 def get_categories():
     """Get all food categories"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT 
-            fc.category_id,
-            fc.name,
-            COUNT(f.food_id) as food_count
-        FROM food_categories fc
-        LEFT JOIN foods f ON fc.category_id = f.category_id
-        GROUP BY fc.category_id, fc.name
-        ORDER BY fc.name
-    """)
-    categories = cursor.fetchall()
-    cursor.close()
-    return categories
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                fc.category_id,
+                fc.name,
+                COUNT(f.food_id) as food_count
+            FROM food_categories fc
+            LEFT JOIN foods f ON fc.category_id = f.category_id
+            GROUP BY fc.category_id, fc.name
+            ORDER BY fc.name
+        """)
+        categories = cursor.fetchall()
+        cursor.close()
+        return categories
+    finally:
+        if conn.is_connected():
+            conn.close()
 
 @st.cache_data(ttl=3600)
 def get_stats():
     """Get database statistics"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT 
-            (SELECT COUNT(*) FROM food_categories) as categories,
-            (SELECT COUNT(*) FROM foods) as foods,
-            (SELECT COUNT(*) FROM nutrition_facts) as nutrition_records
-    """)
-    stats = cursor.fetchone()
-    cursor.close()
-    return stats
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                (SELECT COUNT(*) FROM food_categories) as categories,
+                (SELECT COUNT(*) FROM foods) as foods,
+                (SELECT COUNT(*) FROM nutrition_facts) as nutrition_records
+        """)
+        stats = cursor.fetchone()
+        cursor.close()
+        return stats
+    finally:
+        if conn.is_connected():
+            conn.close()
 
 def search_foods(search_term='', category_id='', min_cal='', max_cal=''):
     """Search for foods"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    query = """
-        SELECT 
-            f.food_id,
-            f.name,
-            f.brand,
-            f.serving_size,
-            fc.name as category,
-            nf.calories,
-            nf.protein_g,
-            nf.fat_g,
-            nf.carbohydrates_g,
-            nf.fiber_g,
-            nf.sodium_mg,
-            nf.sugar_g
-        FROM foods f
-        JOIN food_categories fc ON f.category_id = fc.category_id
-        LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
-        WHERE 1=1
-    """
-    
-    params = []
-    
-    if search_term:
-        query += " AND (f.name LIKE %s OR f.description LIKE %s)"
-        params.extend([f"%{search_term}%", f"%{search_term}%"])
-    
-    if category_id:
-        query += " AND fc.category_id = %s"
-        params.append(category_id)
-    
-    if min_cal:
-        query += " AND nf.calories >= %s"
-        params.append(float(min_cal))
-    
-    if max_cal:
-        query += " AND nf.calories <= %s"
-        params.append(float(max_cal))
-    
-    query += " ORDER BY f.name LIMIT 500"
-    
-    cursor.execute(query, params)
-    foods = cursor.fetchall()
-    cursor.close()
-    
-    return foods
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        query = """
+            SELECT 
+                f.food_id,
+                f.name,
+                f.brand,
+                f.serving_size,
+                fc.name as category,
+                nf.calories,
+                nf.protein_g,
+                nf.fat_g,
+                nf.carbohydrates_g,
+                nf.fiber_g,
+                nf.sodium_mg,
+                nf.sugar_g
+            FROM foods f
+            JOIN food_categories fc ON f.category_id = fc.category_id
+            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        if search_term:
+            query += " AND (f.name LIKE %s OR f.description LIKE %s)"
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
+        
+        if category_id:
+            query += " AND fc.category_id = %s"
+            params.append(category_id)
+        
+        if min_cal:
+            query += " AND nf.calories >= %s"
+            params.append(float(min_cal))
+        
+        if max_cal:
+            query += " AND nf.calories <= %s"
+            params.append(float(max_cal))
+        
+        query += " ORDER BY f.name LIMIT 500"
+        
+        cursor.execute(query, params)
+        foods = cursor.fetchall()
+        cursor.close()
+        
+        return foods
+    finally:
+        if conn.is_connected():
+            conn.close()
 
+@st.cache_data(ttl=3600)
 def get_category_stats():
     """Get category statistics"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT 
-            fc.name as category,
-            COUNT(nf.nutrition_id) as total_foods,
-            ROUND(AVG(nf.calories), 2) as avg_calories,
-            ROUND(AVG(nf.protein_g), 2) as avg_protein,
-            ROUND(AVG(nf.fat_g), 2) as avg_fat,
-            ROUND(AVG(nf.carbohydrates_g), 2) as avg_carbs,
-            ROUND(AVG(nf.fiber_g), 2) as avg_fiber
-        FROM food_categories fc
-        LEFT JOIN foods f ON fc.category_id = f.category_id
-        LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
-        WHERE nf.calories IS NOT NULL
-        GROUP BY fc.category_id, fc.name
-        ORDER BY avg_calories DESC
-    """)
-    stats = cursor.fetchall()
-    cursor.close()
-    return stats
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                fc.name as category,
+                COUNT(nf.nutrition_id) as total_foods,
+                ROUND(AVG(nf.calories), 2) as avg_calories,
+                ROUND(AVG(nf.protein_g), 2) as avg_protein,
+                ROUND(AVG(nf.fat_g), 2) as avg_fat,
+                ROUND(AVG(nf.carbohydrates_g), 2) as avg_carbs,
+                ROUND(AVG(nf.fiber_g), 2) as avg_fiber
+            FROM food_categories fc
+            LEFT JOIN foods f ON fc.category_id = f.category_id
+            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+            WHERE nf.calories IS NOT NULL
+            GROUP BY fc.category_id, fc.name
+            ORDER BY avg_calories DESC
+        """)
+        stats = cursor.fetchall()
+        cursor.close()
+        return stats
+    finally:
+        if conn.is_connected():
+            conn.close()
 
+@st.cache_data(ttl=3600)
 def get_top_foods(metric='calories', limit=10):
     """Get top foods by metric"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    if metric == 'calories':
-        query = """
-            SELECT f.name, fc.name as category, nf.calories as value, f.brand
-            FROM foods f
-            JOIN food_categories fc ON f.category_id = fc.category_id
-            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
-            WHERE nf.calories IS NOT NULL
-            ORDER BY nf.calories DESC
-            LIMIT %s
-        """
-    elif metric == 'protein':
-        query = """
-            SELECT f.name, fc.name as category, nf.protein_g as value, f.brand
-            FROM foods f
-            JOIN food_categories fc ON f.category_id = fc.category_id
-            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
-            WHERE nf.protein_g IS NOT NULL
-            ORDER BY nf.protein_g DESC
-            LIMIT %s
-        """
-    elif metric == 'fiber':
-        query = """
-            SELECT f.name, fc.name as category, nf.fiber_g as value, f.brand
-            FROM foods f
-            JOIN food_categories fc ON f.category_id = fc.category_id
-            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
-            WHERE nf.fiber_g IS NOT NULL
-            ORDER BY nf.fiber_g DESC
-            LIMIT %s
-        """
-    else:
-        return []
-    
-    cursor.execute(query, (limit,))
-    foods = cursor.fetchall()
-    cursor.close()
-    return foods
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        if metric == 'calories':
+            query = """
+                SELECT f.name, fc.name as category, nf.calories as value, f.brand
+                FROM foods f
+                JOIN food_categories fc ON f.category_id = fc.category_id
+                LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+                WHERE nf.calories IS NOT NULL
+                ORDER BY nf.calories DESC
+                LIMIT %s
+            """
+        elif metric == 'protein':
+            query = """
+                SELECT f.name, fc.name as category, nf.protein_g as value, f.brand
+                FROM foods f
+                JOIN food_categories fc ON f.category_id = fc.category_id
+                LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+                WHERE nf.protein_g IS NOT NULL
+                ORDER BY nf.protein_g DESC
+                LIMIT %s
+            """
+        elif metric == 'fiber':
+            query = """
+                SELECT f.name, fc.name as category, nf.fiber_g as value, f.brand
+                FROM foods f
+                JOIN food_categories fc ON f.category_id = fc.category_id
+                LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+                WHERE nf.fiber_g IS NOT NULL
+                ORDER BY nf.fiber_g DESC
+                LIMIT %s
+            """
+        else:
+            return []
+        
+        cursor.execute(query, (limit,))
+        foods = cursor.fetchall()
+        cursor.close()
+        return foods
+    finally:
+        if conn.is_connected():
+            conn.close()
 
+@st.cache_data(ttl=3600)
 def get_overall_stats():
     """Get overall nutrition statistics"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT 
-            ROUND(AVG(calories), 2) as avg_calories,
-            ROUND(AVG(protein_g), 2) as avg_protein,
-            ROUND(AVG(fat_g), 2) as avg_fat,
-            ROUND(AVG(carbohydrates_g), 2) as avg_carbs,
-            ROUND(AVG(fiber_g), 2) as avg_fiber,
-            ROUND(AVG(sodium_mg), 2) as avg_sodium,
-            ROUND(AVG(sugar_g), 2) as avg_sugar
-        FROM nutrition_facts
-        WHERE calories IS NOT NULL
-    """)
-    stats = cursor.fetchone()
-    cursor.close()
-    return stats
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                ROUND(AVG(calories), 2) as avg_calories,
+                ROUND(AVG(protein_g), 2) as avg_protein,
+                ROUND(AVG(fat_g), 2) as avg_fat,
+                ROUND(AVG(carbohydrates_g), 2) as avg_carbs,
+                ROUND(AVG(fiber_g), 2) as avg_fiber,
+                ROUND(AVG(sodium_mg), 2) as avg_sodium,
+                ROUND(AVG(sugar_g), 2) as avg_sugar
+            FROM nutrition_facts
+            WHERE calories IS NOT NULL
+        """)
+        stats = cursor.fetchone()
+        cursor.close()
+        return stats
+    finally:
+        if conn.is_connected():
+            conn.close()
 
 # Custom CSS
 st.markdown("""
