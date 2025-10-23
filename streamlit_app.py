@@ -993,13 +993,13 @@ with tab5:
             
             for food in comp_foods:
                 comp_data[food['name']] = [
-                    f"{food['calories']:.0f}",
-                    f"{food['protein_g']:.1f}",
-                    f"{food['fat_g']:.1f}",
-                    f"{food['carbohydrates_g']:.1f}",
-                    f"{food['fiber_g']:.1f}",
-                    f"{food['sodium_mg']:.0f}",
-                    f"{food['sugar_g']:.1f}"
+                    f"{(food['calories'] or 0):.0f}",
+                    f"{(food['protein_g'] or 0):.1f}",
+                    f"{(food['fat_g'] or 0):.1f}",
+                    f"{(food['carbohydrates_g'] or 0):.1f}",
+                    f"{(food['fiber_g'] or 0):.1f}",
+                    f"{(food['sodium_mg'] or 0):.0f}",
+                    f"{(food['sugar_g'] or 0):.1f}"
                 ]
             
             df_comp = pd.DataFrame(comp_data)
@@ -1013,13 +1013,13 @@ with tab5:
                 
                 for food in comp_foods:
                     values = [
-                        food['calories'],
-                        food['protein_g'] * 20,
-                        food['fat_g'] * 20,
-                        food['carbohydrates_g'] * 20,
-                        food['fiber_g'] * 20,
-                        food['sodium_mg'] / 10,
-                        food['sugar_g'] * 20
+                        (food['calories'] or 0),
+                        (food['protein_g'] or 0) * 20,
+                        (food['fat_g'] or 0) * 20,
+                        (food['carbohydrates_g'] or 0) * 20,
+                        (food['fiber_g'] or 0) * 20,
+                        (food['sodium_mg'] or 0) / 10,
+                        (food['sugar_g'] or 0) * 20
                     ]
                     
                     fig.add_trace(go.Scatterpolar(
@@ -1078,19 +1078,19 @@ with tab6:
                 for idx, food in enumerate(st.session_state.meal_plan[meal]):
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        st.caption(f"{food['name']} - {food['calories']:.0f} cal, {food['protein_g']:.1f}g protein")
+                        st.caption(f"{food['name']} - {(food['calories'] or 0):.0f} cal, {(food['protein_g'] or 0):.1f}g protein")
                     with col2:
                         if st.button("x", key=f"remove_meal_{meal}_{idx}"):
                             st.session_state.meal_plan[meal].pop(idx)
                             st.rerun()
                     
-                    total_calories += food['calories']
-                    total_protein += food['protein_g']
-                    total_carbs += food['carbohydrates_g']
-                    total_fat += food['fat_g']
-                    total_fiber += food['fiber_g']
-                    total_sodium += food['sodium_mg']
-                    total_sugar += food['sugar_g']
+                    total_calories += (food['calories'] or 0)
+                    total_protein += (food['protein_g'] or 0)
+                    total_carbs += (food['carbohydrates_g'] or 0)
+                    total_fat += (food['fat_g'] or 0)
+                    total_fiber += (food['fiber_g'] or 0)
+                    total_sodium += (food['sodium_mg'] or 0)
+                    total_sugar += (food['sugar_g'] or 0)
             else:
                 st.caption("No foods added")
     
