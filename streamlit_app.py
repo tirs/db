@@ -362,8 +362,47 @@ with tab2:
             with st.container(border=True):
                 st.markdown(f"### 📁 {cat['name']}")
                 st.metric("Foods", cat['food_count'])
-                if st.button("View Details", key=f"cat_{cat['category_id']}"):
+                if st.button("View Details", key=f"cat_{cat['category_id']}", use_container_width=True):
                     st.session_state.selected_category = cat['category_id']
+    
+    st.divider()
+    
+    # Show details for selected category
+    if st.session_state.get('selected_category'):
+        selected_cat_id = st.session_state.selected_category
+        selected_cat_name = next((cat['name'] for cat in categories if cat['category_id'] == selected_cat_id), "Unknown")
+        
+        st.markdown(f"## 📁 {selected_cat_name} - All Foods")
+        
+        # Get all foods in this category
+        foods = search_foods('', selected_cat_id, '', '')
+        
+        if foods:
+            df = pd.DataFrame(foods)
+            df['calories'] = df['calories'].fillna(0).astype(float)
+            df['protein_g'] = df['protein_g'].fillna(0).astype(float)
+            df['fat_g'] = df['fat_g'].fillna(0).astype(float)
+            df['carbohydrates_g'] = df['carbohydrates_g'].fillna(0).astype(float)
+            
+            st.success(f"✅ Found {len(foods)} foods in this category")
+            
+            # Display table
+            display_df = df[['name', 'brand', 'calories', 'protein_g', 'fat_g', 'carbohydrates_g', 'fiber_g']].copy()
+            display_df.columns = ['Food Name', 'Brand', 'Calories', 'Protein (g)', 'Fat (g)', 'Carbs (g)', 'Fiber (g)']
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            
+            # CSV export
+            csv_buffer = StringIO()
+            display_df.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="📥 Download as CSV",
+                data=csv_buffer.getvalue(),
+                file_name=f"{selected_cat_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        else:
+            st.warning("😕 No foods found in this category.")
 
 # TAB 3: ANALYSIS
 with tab3:
