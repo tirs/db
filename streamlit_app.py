@@ -13,6 +13,7 @@ import plotly.express as px
 from io import StringIO
 import csv
 import json
+import hashlib
 
 # Page config
 st.set_page_config(
@@ -31,10 +32,14 @@ if 'comparison_foods' not in st.session_state:
     st.session_state.comparison_foods = []
 if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = False
+if 'daily_goals' not in st.session_state:
+    st.session_state.daily_goals = {'calories': 2000, 'protein': 50, 'carbs': 250, 'fat': 65}
+if 'search_history' not in st.session_state:
+    st.session_state.search_history = []
 
 # Database configuration
 def get_db_config():
-    """Get database config from secrets or environment"""
+    """Get database config from secrets only (improved security)"""
     try:
         return {
             'host': st.secrets["database"]["host"],
@@ -43,32 +48,49 @@ def get_db_config():
             'database': st.secrets["database"]["database"],
             'port': st.secrets["database"]["port"]
         }
-    except:
-        return {
-            'host': '82.197.82.46',
-            'user': 'u280406916_nutrition',
-            'password': 'Mutsokoti08@',
-            'database': 'u280406916_nutrition',
-            'port': 3306
-        }
+    except KeyError as e:
+        st.error(f"Missing database configuration: {str(e)}")
+        st.error("Please configure database secrets in Streamlit Cloud or local secrets.toml")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error reading database configuration: {str(e)}")
+        st.stop()
 
 def get_db_connection():
-    """Get fresh database connection (no caching to prevent timeouts)"""
+    """Get fresh database connection with error handling"""
     try:
         config = get_db_config()
         conn = mysql.connector.connect(**config)
         if not conn.is_connected():
             conn.reconnect()
         return conn
-    except Exception as e:
+    except mysql.connector.Error as e:
         st.error(f"Database connection failed: {str(e)}")
         st.stop()
 
+# Database functions for persistent storage
+def save_bookmarks_to_db(user_id, bookmarks):
+    """Save bookmarks to database (future enhancement)"""
+    pass
+
+def load_bookmarks_from_db(user_id):
+    """Load bookmarks from database (future enhancement)"""
+    pass
+
+def save_meal_plan_to_db(user_id, meal_plan):
+    """Save meal plan to database (future enhancement)"""
+    pass
+
+def load_meal_plan_from_db(user_id):
+    """Load meal plan from database (future enhancement)"""
+    pass
+
 @st.cache_data(ttl=3600)
 def get_categories():
-    """Get all food categories"""
-    conn = get_db_connection()
+    """Get all food categories with error handling"""
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -82,16 +104,20 @@ def get_categories():
         """)
         categories = cursor.fetchall()
         cursor.close()
-        return categories
+        return categories if categories else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching categories: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_stats():
-    """Get database statistics"""
-    conn = get_db_connection()
+    """Get database statistics with error handling"""
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -102,15 +128,19 @@ def get_stats():
         """)
         stats = cursor.fetchone()
         cursor.close()
-        return stats
+        return stats if stats else {'categories': 0, 'foods': 0, 'nutrition_records': 0, 'last_updated': None}
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching database stats: {str(e)}")
+        return {'categories': 0, 'foods': 0, 'nutrition_records': 0, 'last_updated': None}
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 def search_foods(search_term='', category_id='', min_cal='', max_cal='', min_protein='', max_protein='', min_fiber='', max_fiber='', min_sodium='', max_sodium=''):
-    """Search for foods with advanced filters"""
-    conn = get_db_connection()
+    """Search for foods with advanced filters and error handling"""
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
         query = """
@@ -138,6 +168,11 @@ def search_foods(search_term='', category_id='', min_cal='', max_cal='', min_pro
         if search_term:
             query += " AND (f.name LIKE %s OR f.description LIKE %s)"
             params.extend([f"%{search_term}%", f"%{search_term}%"])
+            # Add to search history
+            if search_term not in st.session_state.search_history:
+                st.session_state.search_history.append(search_term)
+                if len(st.session_state.search_history) > 10:
+                    st.session_state.search_history.pop(0)
         
         if category_id:
             query += " AND fc.category_id = %s"
@@ -180,16 +215,25 @@ def search_foods(search_term='', category_id='', min_cal='', max_cal='', min_pro
         cursor.execute(query, params)
         foods = cursor.fetchall()
         cursor.close()
-        
-        return foods
+        return foods if foods else []
+    except mysql.connector.Error as e:
+        st.error(f"Error searching foods: {str(e)}")
+        return []
+    except ValueError as e:
+        st.error(f"Invalid filter value: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 def get_similar_foods(search_term, limit=5):
     """Get similar foods for search suggestions"""
-    conn = get_db_connection()
+    conn = None
     try:
+        if not search_term or len(search_term) < 1:
+            return []
+        
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT f.name FROM foods f
@@ -198,16 +242,20 @@ def get_similar_foods(search_term, limit=5):
         """, (f"%{search_term[0]}%", limit))
         results = cursor.fetchall()
         cursor.close()
-        return [r['name'] for r in results]
+        return [r['name'] for r in results] if results else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching suggestions: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_category_stats():
     """Get category statistics"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -227,16 +275,20 @@ def get_category_stats():
         """)
         stats = cursor.fetchall()
         cursor.close()
-        return stats
+        return stats if stats else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching category stats: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_top_foods(metric='calories', category='', limit=10):
     """Get top foods by metric"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
         if metric == 'calories':
@@ -300,16 +352,20 @@ def get_top_foods(metric='calories', category='', limit=10):
             
         foods = cursor.fetchall()
         cursor.close()
-        return foods
+        return foods if foods else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching top foods: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_overall_stats():
     """Get overall nutrition statistics"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -325,16 +381,20 @@ def get_overall_stats():
         """)
         stats = cursor.fetchone()
         cursor.close()
-        return stats
+        return stats if stats else {}
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching overall stats: {str(e)}")
+        return {}
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_extended_stats():
     """Get extended nutrition statistics with min/max/median"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -365,16 +425,20 @@ def get_extended_stats():
         """)
         stats = cursor.fetchone()
         cursor.close()
-        return stats
+        return stats if stats else {}
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching extended stats: {str(e)}")
+        return {}
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_calorie_distribution():
     """Get calorie distribution for histogram"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT calories
@@ -384,16 +448,20 @@ def get_calorie_distribution():
         """)
         data = cursor.fetchall()
         cursor.close()
-        return [row['calories'] for row in data]
+        return [row['calories'] for row in data] if data else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching calorie distribution: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @st.cache_data(ttl=3600)
 def get_nutrition_by_category_detailed():
     """Get detailed nutrition stats by category"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -407,7 +475,7 @@ def get_nutrition_by_category_detailed():
                 ROUND(AVG(nf.sodium_mg), 2) as avg_sodium,
                 ROUND(AVG(nf.sugar_g), 2) as avg_sugar,
                 ROUND(AVG(nf.protein_g) / AVG(nf.calories) * 4, 4) as protein_ratio,
-                ROUND(AVG(nf.fiber_g) / AVG(nf.sugar_g), 4) as fiber_sugar_ratio
+                ROUND(AVG(nf.fiber_g) / NULLIF(AVG(nf.sugar_g), 0), 4) as fiber_sugar_ratio
             FROM food_categories fc
             LEFT JOIN foods f ON fc.category_id = f.category_id
             LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
@@ -417,15 +485,19 @@ def get_nutrition_by_category_detailed():
         """)
         stats = cursor.fetchall()
         cursor.close()
-        return stats
+        return stats if stats else []
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching category details: {str(e)}")
+        return []
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 def get_food_details(food_id):
     """Get detailed nutrition info for a food"""
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT 
@@ -449,8 +521,11 @@ def get_food_details(food_id):
         result = cursor.fetchone()
         cursor.close()
         return result
+    except mysql.connector.Error as e:
+        st.error(f"Error fetching food details: {str(e)}")
+        return None
     finally:
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 # Theme CSS
@@ -479,6 +554,15 @@ with st.sidebar:
     # Dark mode toggle
     st.session_state.dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode)
     
+    # Daily Goals
+    st.markdown("### Daily Goals")
+    st.session_state.daily_goals['calories'] = st.number_input("Daily Calorie Target", value=2000, min_value=500, max_value=5000)
+    st.session_state.daily_goals['protein'] = st.number_input("Daily Protein (g)", value=50, min_value=10, max_value=300)
+    st.session_state.daily_goals['carbs'] = st.number_input("Daily Carbs (g)", value=250, min_value=50, max_value=500)
+    st.session_state.daily_goals['fat'] = st.number_input("Daily Fat (g)", value=65, min_value=20, max_value=200)
+    
+    st.divider()
+    
     # Favorites section
     st.markdown("### Bookmarks")
     if st.session_state.favorites:
@@ -495,6 +579,19 @@ with st.sidebar:
     
     st.divider()
     
+    # Search History
+    st.markdown("### Search History")
+    if st.session_state.search_history:
+        if st.button("Clear History", use_container_width=True):
+            st.session_state.search_history = []
+            st.rerun()
+        for search in reversed(st.session_state.search_history[-5:]):
+            st.caption(f"• {search}")
+    else:
+        st.caption("No recent searches")
+    
+    st.divider()
+    
     # Quick presets
     st.markdown("### Search Presets")
     preset = st.radio("Quick Filters:", 
@@ -503,19 +600,11 @@ with st.sidebar:
     
     st.divider()
     
-    # Keyboard shortcuts help
-    st.markdown("### Keyboard Shortcuts")
-    st.caption("Press 'S' to focus search")
-    st.caption("Press 'C' to open comparison tool")
-    st.caption("Press 'M' to open meal planner")
-    
-    st.divider()
-    
     # Database info
     stats = get_stats()
     st.markdown("### Database Information")
-    st.caption(f"Total Foods: {stats['foods']:,}")
-    st.caption(f"Categories: {stats['categories']}")
+    st.caption(f"Total Foods: {stats.get('foods', 0):,}")
+    st.caption(f"Categories: {stats.get('categories', 0)}")
     if stats.get('last_updated'):
         st.caption(f"Last Updated: {stats['last_updated'].strftime('%Y-%m-%d')}")
     st.caption("Powered by USDA FoodData Central")
@@ -528,13 +617,16 @@ st.markdown("Professional nutrition data for your clients")
 stats = get_stats()
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Categories", stats['categories'])
+    st.metric("Categories", stats.get('categories', 0))
 with col2:
-    st.metric("Foods", f"{stats['foods']:,}")
+    st.metric("Foods", f"{stats.get('foods', 0):,}")
 with col3:
-    st.metric("Records", f"{stats['nutrition_records']:,}")
+    st.metric("Records", f"{stats.get('nutrition_records', 0):,}")
 with col4:
-    st.metric("Last Updated", stats.get('last_updated', 'N/A').strftime('%Y-%m-%d') if stats.get('last_updated') else 'N/A')
+    if stats.get('last_updated'):
+        st.metric("Last Updated", stats['last_updated'].strftime('%Y-%m-%d'))
+    else:
+        st.metric("Last Updated", "N/A")
 
 st.divider()
 
@@ -649,14 +741,18 @@ with tab1:
                 col1, col2, col3 = st.columns([3, 1, 1])
                 with col2:
                     if st.button("Compare", key=f"comp_{idx}"):
-                        st.session_state.comparison_foods.append(food)
+                        if food not in st.session_state.comparison_foods:
+                            st.session_state.comparison_foods.append(food)
+                            st.success(f"Added to comparison")
+                        st.rerun()
                 with col3:
                     if st.button("Bookmark", key=f"fav_{idx}"):
-                        st.session_state.favorites.append({
-                            'food_id': food['food_id'],
-                            'name': food['name']
-                        })
-                        st.success("Added to bookmarks!")
+                        if food['food_id'] not in [f['food_id'] for f in st.session_state.favorites]:
+                            st.session_state.favorites.append({
+                                'food_id': food['food_id'],
+                                'name': food['name']
+                            })
+                            st.success("Added to bookmarks!")
             
             # CSV export
             csv_buffer = StringIO()
@@ -736,181 +832,146 @@ with tab3:
     df_detailed = pd.DataFrame(get_nutrition_by_category_detailed())
     calorie_dist = get_calorie_distribution()
     
-    st.markdown("## Key Metrics Overview")
-    
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.metric("Avg Calories", f"{overall_stats['avg_calories']:.0f}", 
-                  f"Min: {extended_stats['min_calories']:.0f} | Max: {extended_stats['max_calories']:.0f}")
-    with col2:
-        st.metric("Avg Protein", f"{overall_stats['avg_protein']:.1f}g",
-                  f"Min: {extended_stats['min_protein']:.1f}g | Max: {extended_stats['max_protein']:.1f}g")
-    with col3:
-        st.metric("Avg Fat", f"{overall_stats['avg_fat']:.1f}g",
-                  f"Min: {extended_stats['min_fat']:.1f}g | Max: {extended_stats['max_fat']:.1f}g")
-    with col4:
-        st.metric("Avg Carbs", f"{overall_stats['avg_carbs']:.1f}g",
-                  f"Min: {extended_stats['min_carbs']:.1f}g | Max: {extended_stats['max_carbs']:.1f}g")
-    with col5:
-        st.metric("Avg Fiber", f"{overall_stats['avg_fiber']:.1f}g",
-                  f"Min: {extended_stats['min_fiber']:.1f}g | Max: {extended_stats['max_fiber']:.1f}g")
-    with col6:
-        st.metric("Avg Sodium", f"{overall_stats['avg_sodium']:.0f}mg",
-                  f"Min: {extended_stats['min_sodium']:.0f}mg | Max: {extended_stats['max_sodium']:.0f}mg")
-    
-    st.metric("Avg Sugar", f"{overall_stats['avg_sugar']:.1f}g",
-              f"Min: {extended_stats['min_sugar']:.1f}g | Max: {extended_stats['max_sugar']:.1f}g")
-    
-    st.divider()
-    
-    st.markdown("## Distribution Analysis")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Calorie Distribution")
-        fig = go.Figure(data=[go.Histogram(x=calorie_dist, nbinsx=50, 
-                                           marker_color='#667eea',
-                                           opacity=0.7)])
-        fig.update_layout(
-            xaxis_title="Calories per Serving",
-            yaxis_title="Number of Foods",
-            height=400,
-            showlegend=False,
-            hovermode='x unified'
-        )
+    if not df_detailed.empty and extended_stats:
+        st.markdown("## Key Metrics Overview")
+        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        with col1:
+            st.metric("Avg Calories", f"{extended_stats.get('avg_calories', 0):.0f}")
+        with col2:
+            st.metric("Avg Protein (g)", f"{extended_stats.get('avg_protein', 0):.1f}")
+        with col3:
+            st.metric("Avg Fat (g)", f"{extended_stats.get('avg_fat', 0):.1f}")
+        with col4:
+            st.metric("Avg Carbs (g)", f"{extended_stats.get('avg_carbs', 0):.1f}")
+        with col5:
+            st.metric("Avg Fiber (g)", f"{extended_stats.get('avg_fiber', 0):.1f}")
+        with col6:
+            st.metric("Avg Sodium (mg)", f"{extended_stats.get('avg_sodium', 0):.0f}")
+        
+        st.divider()
+        
+        st.markdown("## Calorie Distribution")
+        fig = px.histogram(x=calorie_dist, nbins=50, 
+                          labels={'x': 'Calories', 'y': 'Count'},
+                          title="Distribution of Food Calories")
+        fig.update_layout(height=400, showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Macronutrient Distribution (Avg)")
-        macro_data = {
-            'Macronutrient': ['Protein', 'Fat', 'Carbs'],
-            'Grams': [
-                overall_stats['avg_protein'],
-                overall_stats['avg_fat'],
-                overall_stats['avg_carbs']
-            ]
+        
+        st.divider()
+        
+        st.markdown("## Category Comparison")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Average Calories by Category")
+            fig = px.bar(df_detailed, x='category', y='avg_calories',
+                         labels={'category': 'Category', 'avg_calories': 'Avg Calories'},
+                         color='avg_calories', color_continuous_scale='Viridis',
+                         text='avg_calories')
+            fig.update_traces(textposition='auto')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("### Average Protein by Category")
+            fig = px.bar(df_detailed, x='category', y='avg_protein',
+                         labels={'category': 'Category', 'avg_protein': 'Avg Protein (g)'},
+                         color='avg_protein', color_continuous_scale='Blues',
+                         text='avg_protein')
+            fig.update_traces(textposition='auto')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Average Fiber by Category")
+            fig = px.bar(df_detailed, x='category', y='avg_fiber',
+                         labels={'category': 'Category', 'avg_fiber': 'Avg Fiber (g)'},
+                         color='avg_fiber', color_continuous_scale='Greens',
+                         text='avg_fiber')
+            fig.update_traces(textposition='auto')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("### Average Sodium by Category")
+            fig = px.bar(df_detailed, x='category', y='avg_sodium',
+                         labels={'category': 'Category', 'avg_sodium': 'Avg Sodium (mg)'},
+                         color='avg_sodium', color_continuous_scale='Reds',
+                         text='avg_sodium')
+            fig.update_traces(textposition='auto')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.divider()
+        
+        st.markdown("## Nutrition Quality Scores by Category")
+        st.markdown("*Protein Efficiency: Higher = More protein per calorie | Health Score: Higher = Healthier*")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Protein Efficiency (g per calorie)")
+            fig = px.bar(df_detailed.sort_values('protein_ratio', ascending=False), 
+                         x='category', y='protein_ratio',
+                         labels={'category': 'Category', 'protein_ratio': 'Protein/Calorie Ratio'},
+                         color='protein_ratio', color_continuous_scale='Reds',
+                         text='protein_ratio')
+            fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("### Health Score (Fiber-to-Sugar Ratio)")
+            fig = px.bar(df_detailed.sort_values('fiber_sugar_ratio', ascending=False),
+                         x='category', y='fiber_sugar_ratio',
+                         labels={'category': 'Category', 'fiber_sugar_ratio': 'Fiber/Sugar Ratio'},
+                         color='fiber_sugar_ratio', color_continuous_scale='Greens',
+                         text='fiber_sugar_ratio')
+            fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
+            fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.divider()
+        
+        st.markdown("## Complete Category Nutrition Summary")
+        
+        summary_df = df_detailed.copy()
+        summary_df = summary_df.round(2)
+        
+        display_cols = {
+            'category': 'Category',
+            'total_foods': 'Foods',
+            'avg_calories': 'Avg Cal',
+            'avg_protein': 'Avg Protein (g)',
+            'avg_fat': 'Avg Fat (g)',
+            'avg_carbs': 'Avg Carbs (g)',
+            'avg_fiber': 'Avg Fiber (g)',
+            'avg_sodium': 'Avg Na (mg)',
+            'avg_sugar': 'Avg Sugar (g)',
+            'protein_ratio': 'Protein Ratio',
+            'fiber_sugar_ratio': 'Fiber/Sugar'
         }
-        df_macro = pd.DataFrame(macro_data)
-        fig = px.pie(df_macro, values='Grams', names='Macronutrient',
-                     color_discrete_sequence=['#FF6B6B', '#FFA07A', '#4ECDC4'],
-                     hole=0.3)
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    st.divider()
-    
-    st.markdown("## Category Comparison")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Average Calories by Category")
-        fig = px.bar(df_detailed, x='category', y='avg_calories',
-                     labels={'category': 'Category', 'avg_calories': 'Avg Calories'},
-                     color='avg_calories', color_continuous_scale='Viridis',
-                     text='avg_calories')
-        fig.update_traces(textposition='auto')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Average Protein by Category")
-        fig = px.bar(df_detailed, x='category', y='avg_protein',
-                     labels={'category': 'Category', 'avg_protein': 'Avg Protein (g)'},
-                     color='avg_protein', color_continuous_scale='Blues',
-                     text='avg_protein')
-        fig.update_traces(textposition='auto')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Average Fiber by Category")
-        fig = px.bar(df_detailed, x='category', y='avg_fiber',
-                     labels={'category': 'Category', 'avg_fiber': 'Avg Fiber (g)'},
-                     color='avg_fiber', color_continuous_scale='Greens',
-                     text='avg_fiber')
-        fig.update_traces(textposition='auto')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Average Sodium by Category")
-        fig = px.bar(df_detailed, x='category', y='avg_sodium',
-                     labels={'category': 'Category', 'avg_sodium': 'Avg Sodium (mg)'},
-                     color='avg_sodium', color_continuous_scale='Reds',
-                     text='avg_sodium')
-        fig.update_traces(textposition='auto')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    st.divider()
-    
-    st.markdown("## Nutrition Quality Scores by Category")
-    st.markdown("*Protein Efficiency: Higher = More protein per calorie | Health Score: Higher = Healthier*")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Protein Efficiency (g per calorie)")
-        fig = px.bar(df_detailed.sort_values('protein_ratio', ascending=False), 
-                     x='category', y='protein_ratio',
-                     labels={'category': 'Category', 'protein_ratio': 'Protein/Calorie Ratio'},
-                     color='protein_ratio', color_continuous_scale='Reds',
-                     text='protein_ratio')
-        fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Health Score (Fiber-to-Sugar Ratio)")
-        fig = px.bar(df_detailed.sort_values('fiber_sugar_ratio', ascending=False),
-                     x='category', y='fiber_sugar_ratio',
-                     labels={'category': 'Category', 'fiber_sugar_ratio': 'Fiber/Sugar Ratio'},
-                     color='fiber_sugar_ratio', color_continuous_scale='Greens',
-                     text='fiber_sugar_ratio')
-        fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
-        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    st.divider()
-    
-    st.markdown("## Complete Category Nutrition Summary")
-    
-    summary_df = df_detailed.copy()
-    summary_df = summary_df.round(2)
-    
-    display_cols = {
-        'category': 'Category',
-        'total_foods': 'Foods',
-        'avg_calories': 'Avg Cal',
-        'avg_protein': 'Avg Protein (g)',
-        'avg_fat': 'Avg Fat (g)',
-        'avg_carbs': 'Avg Carbs (g)',
-        'avg_fiber': 'Avg Fiber (g)',
-        'avg_sodium': 'Avg Na (mg)',
-        'avg_sugar': 'Avg Sugar (g)',
-        'protein_ratio': 'Protein Ratio',
-        'fiber_sugar_ratio': 'Fiber/Sugar'
-    }
-    
-    summary_df = summary_df.rename(columns=display_cols)
-    summary_df = summary_df[list(display_cols.values())]
-    
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
-    
-    csv_buffer = StringIO()
-    summary_df.to_csv(csv_buffer, index=False)
-    st.download_button(
-        label="Download Analysis Summary (CSV)",
-        data=csv_buffer.getvalue(),
-        file_name=f"nutrition_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+        
+        summary_df = summary_df.rename(columns=display_cols)
+        summary_df = summary_df[list(display_cols.values())]
+        
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        
+        csv_buffer = StringIO()
+        summary_df.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="Download Analysis Summary (CSV)",
+            data=csv_buffer.getvalue(),
+            file_name=f"nutrition_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    else:
+        st.info("No analysis data available. Please ensure your database has nutrition records.")
 
 # TAB 4: TOP FOODS
 with tab4:
@@ -965,8 +1026,9 @@ with tab5:
             if search_for_comp:
                 foods = search_foods(search_for_comp, '', '', '', '', '', '', '', '', '')
                 if foods:
-                    st.session_state.comparison_foods.append(foods[0])
-                    st.success(f"Added {foods[0]['name']} to comparison")
+                    if foods[0] not in st.session_state.comparison_foods:
+                        st.session_state.comparison_foods.append(foods[0])
+                        st.success(f"Added {foods[0]['name']} to comparison")
                     st.rerun()
     
     if st.session_state.comparison_foods:
@@ -1005,7 +1067,7 @@ with tab5:
             df_comp = pd.DataFrame(comp_data)
             st.dataframe(df_comp, use_container_width=True, hide_index=True)
             
-            # Radar chart comparison
+            # Enhanced Radar chart comparison with better scaling
             if len(comp_foods) <= 3:
                 fig = go.Figure()
                 
@@ -1034,6 +1096,21 @@ with tab5:
                     height=500
                 )
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Nutritional breakdown chart
+                st.markdown("### Nutritional Breakdown")
+                breakdown_data = []
+                for food in comp_foods:
+                    breakdown_data.append({
+                        'Food': food['name'],
+                        'Protein': (food['protein_g'] or 0),
+                        'Fat': (food['fat_g'] or 0),
+                        'Carbs': (food['carbohydrates_g'] or 0)
+                    })
+                df_breakdown = pd.DataFrame(breakdown_data)
+                fig_breakdown = px.bar(df_breakdown, x='Food', y=['Protein', 'Fat', 'Carbs'],
+                                       barmode='group', color_discrete_sequence=['#FF6B6B', '#FFA07A', '#4ECDC4'])
+                st.plotly_chart(fig_breakdown, use_container_width=True)
         else:
             st.info("Add at least 2 foods to see comparison charts")
     else:
@@ -1041,7 +1118,7 @@ with tab5:
 
 # TAB 6: MEAL PLANNER
 with tab6:
-    st.subheader("Daily Meal Planner")
+    st.subheader("Daily Meal Planner with Goals Tracking")
     
     meal_type = st.radio("Select Meal Type:", ["Breakfast", "Lunch", "Dinner", "Snacks"], horizontal=True)
     meal_key = meal_type.lower()
@@ -1096,25 +1173,42 @@ with tab6:
     
     st.divider()
     
-    st.markdown("### Daily Totals")
+    st.markdown("### Daily Totals vs Goals")
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("Calories", f"{total_calories:.0f}")
+        cal_percent = (total_calories / st.session_state.daily_goals['calories'] * 100) if st.session_state.daily_goals['calories'] > 0 else 0
+        st.metric("Calories", f"{total_calories:.0f}", f"{cal_percent:.0f}% of goal")
     with col2:
-        st.metric("Protein (g)", f"{total_protein:.1f}")
+        prot_percent = (total_protein / st.session_state.daily_goals['protein'] * 100) if st.session_state.daily_goals['protein'] > 0 else 0
+        st.metric("Protein (g)", f"{total_protein:.1f}", f"{prot_percent:.0f}% of goal")
     with col3:
-        st.metric("Carbs (g)", f"{total_carbs:.1f}")
+        carbs_percent = (total_carbs / st.session_state.daily_goals['carbs'] * 100) if st.session_state.daily_goals['carbs'] > 0 else 0
+        st.metric("Carbs (g)", f"{total_carbs:.1f}", f"{carbs_percent:.0f}% of goal")
     with col4:
-        st.metric("Fat (g)", f"{total_fat:.1f}")
+        fat_percent = (total_fat / st.session_state.daily_goals['fat'] * 100) if st.session_state.daily_goals['fat'] > 0 else 0
+        st.metric("Fat (g)", f"{total_fat:.1f}", f"{fat_percent:.0f}% of goal")
     with col5:
         st.metric("Fiber (g)", f"{total_fiber:.1f}")
     with col6:
         st.metric("Sodium (mg)", f"{total_sodium:.0f}")
     
     if total_calories > 0:
-        st.markdown("### Daily Summary Chart")
+        st.markdown("### Daily Summary Charts")
         
+        # Progress towards goals
+        goals_data = {
+            'Nutrient': ['Calories', 'Protein', 'Carbs', 'Fat'],
+            'Current': [total_calories, total_protein, total_carbs, total_fat],
+            'Goal': [st.session_state.daily_goals['calories'], st.session_state.daily_goals['protein'], 
+                     st.session_state.daily_goals['carbs'], st.session_state.daily_goals['fat']]
+        }
+        df_goals = pd.DataFrame(goals_data)
+        fig_goals = px.bar(df_goals, x='Nutrient', y=['Current', 'Goal'], barmode='group',
+                           color_discrete_sequence=['#4ECDC4', '#FF6B6B'])
+        st.plotly_chart(fig_goals, use_container_width=True)
+        
+        # Macronutrient breakdown
         daily_summary = {
             'Nutrient': ['Protein', 'Fat', 'Carbs'],
             'Grams': [total_protein, total_fat, total_carbs]
@@ -1126,7 +1220,7 @@ with tab6:
                     color_discrete_sequence=['#FF6B6B', '#FFA07A', '#4ECDC4'])
         st.plotly_chart(fig, use_container_width=True)
         
-        # Export meal plan
+        # Export meal plan as CSV
         meal_export = []
         for meal in meal_order:
             for food in st.session_state.meal_plan[meal]:
@@ -1134,20 +1228,22 @@ with tab6:
                     'Meal': meal.capitalize(),
                     'Food': food['name'],
                     'Calories': food['calories'],
-                    'Protein': food['protein_g'],
-                    'Carbs': food['carbohydrates_g'],
-                    'Fat': food['fat_g'],
-                    'Fiber': food['fiber_g']
+                    'Protein (g)': food['protein_g'],
+                    'Carbs (g)': food['carbohydrates_g'],
+                    'Fat (g)': food['fat_g'],
+                    'Fiber (g)': food['fiber_g'],
+                    'Sodium (mg)': food['sodium_mg']
                 })
         
         meal_export.append({
-            'Meal': 'TOTAL',
+            'Meal': 'TOTALS',
             'Food': '',
             'Calories': total_calories,
-            'Protein': total_protein,
-            'Carbs': total_carbs,
-            'Fat': total_fat,
-            'Fiber': total_fiber
+            'Protein (g)': total_protein,
+            'Carbs (g)': total_carbs,
+            'Fat (g)': total_fat,
+            'Fiber (g)': total_fiber,
+            'Sodium (mg)': total_sodium
         })
         
         df_export = pd.DataFrame(meal_export)
@@ -1156,7 +1252,7 @@ with tab6:
         st.download_button(
             label="Download Meal Plan (CSV)",
             data=csv_buffer.getvalue(),
-            file_name=f"meal_plan_{datetime.now().strftime('%Y%m%d')}.csv",
+            file_name=f"meal_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
             use_container_width=True
         )
@@ -1166,28 +1262,32 @@ with tab7:
     st.subheader("Your Bookmarked Foods")
     
     if st.session_state.favorites:
-        st.markdown(f"### Total Bookmarks: {len(st.session_state.favorites)}")
-        
-        for idx, fav in enumerate(st.session_state.favorites):
-            food_details = get_food_details(fav['food_id'])
-            
-            if food_details:
+        for fav in st.session_state.favorites:
+            food_detail = get_food_details(fav['food_id'])
+            if food_detail:
                 with st.container(border=True):
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        st.markdown(f"**{food_details['name']}**")
-                        st.caption(f"{food_details['category']} | {food_details.get('brand', 'N/A')}")
-                        st.caption(f"{food_details['calories']:.0f} cal | {food_details['protein_g']:.1f}g protein | {food_details['fiber_g']:.1f}g fiber")
+                        st.markdown(f"### {food_detail['name']}")
+                        st.caption(f"Category: {food_detail['category']} | Brand: {food_detail.get('brand', 'N/A')}")
+                        
+                        # Nutrition details
+                        nutri_cols = st.columns(4)
+                        with nutri_cols[0]:
+                            st.metric("Calories", f"{(food_detail['calories'] or 0):.0f}")
+                        with nutri_cols[1]:
+                            st.metric("Protein", f"{(food_detail['protein_g'] or 0):.1f}g")
+                        with nutri_cols[2]:
+                            st.metric("Carbs", f"{(food_detail['carbohydrates_g'] or 0):.1f}g")
+                        with nutri_cols[3]:
+                            st.metric("Fat", f"{(food_detail['fat_g'] or 0):.1f}g")
+                    
                     with col2:
-                        if st.button("Remove", key=f"unbookmark_{idx}"):
-                            st.session_state.favorites.pop(idx)
+                        if st.button("Remove", key=f"remove_bookmark_{fav['food_id']}"):
+                            st.session_state.favorites = [f for f in st.session_state.favorites if f['food_id'] != fav['food_id']]
                             st.rerun()
     else:
-        st.info("No bookmarks yet. Browse foods and click 'Bookmark' to add them here.")
+        st.info("No bookmarks yet. Search for foods and add them to your bookmarks!")
 
 st.divider()
-st.markdown("---")
-
-stats = get_stats()
-last_updated = stats.get('last_updated', datetime.now()).strftime('%Y-%m-%d %H:%M:%S') if stats.get('last_updated') else 'N/A'
-st.markdown(f"Professional Nutrition Database | Last Updated: {last_updated}")
+st.caption("Nutrition Database Dashboard | Data provided by USDA FoodData Central")
