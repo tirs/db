@@ -254,6 +254,98 @@ def get_overall_stats():
         if conn.is_connected():
             conn.close()
 
+@st.cache_data(ttl=3600)
+def get_extended_stats():
+    """Get extended nutrition statistics with min/max/median"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_foods,
+                MIN(calories) as min_calories,
+                MAX(calories) as max_calories,
+                ROUND(AVG(calories), 2) as avg_calories,
+                MIN(protein_g) as min_protein,
+                MAX(protein_g) as max_protein,
+                ROUND(AVG(protein_g), 2) as avg_protein,
+                MIN(fat_g) as min_fat,
+                MAX(fat_g) as max_fat,
+                ROUND(AVG(fat_g), 2) as avg_fat,
+                MIN(carbohydrates_g) as min_carbs,
+                MAX(carbohydrates_g) as max_carbs,
+                ROUND(AVG(carbohydrates_g), 2) as avg_carbs,
+                MIN(fiber_g) as min_fiber,
+                MAX(fiber_g) as max_fiber,
+                ROUND(AVG(fiber_g), 2) as avg_fiber,
+                MIN(sodium_mg) as min_sodium,
+                MAX(sodium_mg) as max_sodium,
+                ROUND(AVG(sodium_mg), 2) as avg_sodium,
+                MIN(sugar_g) as min_sugar,
+                MAX(sugar_g) as max_sugar,
+                ROUND(AVG(sugar_g), 2) as avg_sugar
+            FROM nutrition_facts
+            WHERE calories IS NOT NULL
+        """)
+        stats = cursor.fetchone()
+        cursor.close()
+        return stats
+    finally:
+        if conn.is_connected():
+            conn.close()
+
+@st.cache_data(ttl=3600)
+def get_calorie_distribution():
+    """Get calorie distribution for histogram"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT calories
+            FROM nutrition_facts
+            WHERE calories IS NOT NULL
+            ORDER BY calories
+        """)
+        data = cursor.fetchall()
+        cursor.close()
+        return [row['calories'] for row in data]
+    finally:
+        if conn.is_connected():
+            conn.close()
+
+@st.cache_data(ttl=3600)
+def get_nutrition_by_category_detailed():
+    """Get detailed nutrition stats by category"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                fc.name as category,
+                COUNT(nf.nutrition_id) as total_foods,
+                ROUND(AVG(nf.calories), 2) as avg_calories,
+                ROUND(AVG(nf.protein_g), 2) as avg_protein,
+                ROUND(AVG(nf.fat_g), 2) as avg_fat,
+                ROUND(AVG(nf.carbohydrates_g), 2) as avg_carbs,
+                ROUND(AVG(nf.fiber_g), 2) as avg_fiber,
+                ROUND(AVG(nf.sodium_mg), 2) as avg_sodium,
+                ROUND(AVG(nf.sugar_g), 2) as avg_sugar,
+                ROUND(AVG(nf.protein_g) / AVG(nf.calories) * 4, 4) as protein_ratio,
+                ROUND(AVG(nf.fiber_g) / AVG(nf.sugar_g), 4) as fiber_sugar_ratio
+            FROM food_categories fc
+            LEFT JOIN foods f ON fc.category_id = f.category_id
+            LEFT JOIN nutrition_facts nf ON f.food_id = nf.food_id
+            WHERE nf.calories IS NOT NULL
+            GROUP BY fc.category_id, fc.name
+            ORDER BY avg_calories DESC
+        """)
+        stats = cursor.fetchall()
+        cursor.close()
+        return stats
+    finally:
+        if conn.is_connected():
+            conn.close()
+
 # Custom CSS
 st.markdown("""
     <style>
@@ -272,6 +364,22 @@ st.markdown("""
         font-size: 0.9em;
         color: #666;
         margin-top: 10px;
+    }
+    .stat-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 15px;
+        border-radius: 8px;
+        color: white;
+        text-align: center;
+        margin: 5px;
+    }
+    .stat-box-value {
+        font-size: 1.8em;
+        font-weight: bold;
+    }
+    .stat-box-label {
+        font-size: 0.85em;
+        opacity: 0.9;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -406,58 +514,199 @@ with tab2:
 
 # TAB 3: ANALYSIS
 with tab3:
-    st.subheader("Nutrition Analysis")
+    st.subheader("Comprehensive Nutrition Analysis")
     
+    # Get all data
+    extended_stats = get_extended_stats()
     overall_stats = get_overall_stats()
-    col1, col2, col3, col4 = st.columns(4)
+    df_detailed = pd.DataFrame(get_nutrition_by_category_detailed())
+    calorie_dist = get_calorie_distribution()
+    
+    # ===== SECTION 1: KEY METRICS OVERVIEW =====
+    st.markdown("## 📊 Key Metrics Overview")
+    
+    # Extended metrics with min/max
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("Avg Calories", f"{overall_stats['avg_calories']:.0f}")
+        st.metric("🔥 Avg Calories", f"{overall_stats['avg_calories']:.0f}", 
+                  f"Min: {extended_stats['min_calories']:.0f} | Max: {extended_stats['max_calories']:.0f}")
     with col2:
-        st.metric("Avg Protein", f"{overall_stats['avg_protein']:.1f}g")
+        st.metric("💪 Avg Protein", f"{overall_stats['avg_protein']:.1f}g",
+                  f"Min: {extended_stats['min_protein']:.1f}g | Max: {extended_stats['max_protein']:.1f}g")
     with col3:
-        st.metric("Avg Fat", f"{overall_stats['avg_fat']:.1f}g")
+        st.metric("🧈 Avg Fat", f"{overall_stats['avg_fat']:.1f}g",
+                  f"Min: {extended_stats['min_fat']:.1f}g | Max: {extended_stats['max_fat']:.1f}g")
     with col4:
-        st.metric("Avg Carbs", f"{overall_stats['avg_carbs']:.1f}g")
+        st.metric("🥔 Avg Carbs", f"{overall_stats['avg_carbs']:.1f}g",
+                  f"Min: {extended_stats['min_carbs']:.1f}g | Max: {extended_stats['max_carbs']:.1f}g")
+    with col5:
+        st.metric("🌾 Avg Fiber", f"{overall_stats['avg_fiber']:.1f}g",
+                  f"Min: {extended_stats['min_fiber']:.1f}g | Max: {extended_stats['max_fiber']:.1f}g")
+    with col6:
+        st.metric("🧂 Avg Sodium", f"{overall_stats['avg_sodium']:.0f}mg",
+                  f"Min: {extended_stats['min_sodium']:.0f}mg | Max: {extended_stats['max_sodium']:.0f}mg")
+    
+    # Sugar metric
+    st.metric("🍭 Avg Sugar", f"{overall_stats['avg_sugar']:.1f}g",
+              f"Min: {extended_stats['min_sugar']:.1f}g | Max: {extended_stats['max_sugar']:.1f}g")
     
     st.divider()
     
-    # Category stats chart
-    category_stats = get_category_stats()
-    df_cat_stats = pd.DataFrame(category_stats)
+    # ===== SECTION 2: DISTRIBUTIONS & HISTOGRAMS =====
+    st.markdown("## 📈 Distribution Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🔥 Calorie Distribution")
+        fig = go.Figure(data=[go.Histogram(x=calorie_dist, nbinsx=50, 
+                                           marker_color='#667eea',
+                                           opacity=0.7)])
+        fig.update_layout(
+            xaxis_title="Calories per Serving",
+            yaxis_title="Number of Foods",
+            height=400,
+            showlegend=False,
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("### 🥘 Macronutrient Distribution (Avg)")
+        macro_data = {
+            'Macronutrient': ['Protein', 'Fat', 'Carbs'],
+            'Grams': [
+                overall_stats['avg_protein'],
+                overall_stats['avg_fat'],
+                overall_stats['avg_carbs']
+            ]
+        }
+        df_macro = pd.DataFrame(macro_data)
+        fig = px.pie(df_macro, values='Grams', names='Macronutrient',
+                     color_discrete_sequence=['#FF6B6B', '#FFA07A', '#4ECDC4'],
+                     hole=0.3)
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.divider()
+    
+    # ===== SECTION 3: CATEGORY COMPARISON =====
+    st.markdown("## 🏆 Category Comparison")
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("### 📊 Average Calories by Category")
-        fig = px.bar(df_cat_stats, x='category', y='avg_calories', 
+        fig = px.bar(df_detailed, x='category', y='avg_calories',
                      labels={'category': 'Category', 'avg_calories': 'Avg Calories'},
-                     color='avg_calories', color_continuous_scale='Viridis')
-        fig.update_layout(height=400, showlegend=False)
+                     color='avg_calories', color_continuous_scale='Viridis',
+                     text='avg_calories')
+        fig.update_traces(textposition='auto')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         st.markdown("### 💪 Average Protein by Category")
-        fig = px.bar(df_cat_stats, x='category', y='avg_protein',
+        fig = px.bar(df_detailed, x='category', y='avg_protein',
                      labels={'category': 'Category', 'avg_protein': 'Avg Protein (g)'},
-                     color='avg_protein', color_continuous_scale='Blues')
-        fig.update_layout(height=400, showlegend=False)
+                     color='avg_protein', color_continuous_scale='Blues',
+                     text='avg_protein')
+        fig.update_traces(textposition='auto')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
     
-    # Macronutrient distribution
-    st.markdown("### 🥘 Overall Macronutrient Distribution")
-    macro_data = {
-        'Macronutrient': ['Protein', 'Fat', 'Carbs'],
-        'Grams': [
-            overall_stats['avg_protein'],
-            overall_stats['avg_fat'],
-            overall_stats['avg_carbs']
-        ]
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🌾 Average Fiber by Category")
+        fig = px.bar(df_detailed, x='category', y='avg_fiber',
+                     labels={'category': 'Category', 'avg_fiber': 'Avg Fiber (g)'},
+                     color='avg_fiber', color_continuous_scale='Greens',
+                     text='avg_fiber')
+        fig.update_traces(textposition='auto')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("### 🧂 Average Sodium by Category")
+        fig = px.bar(df_detailed, x='category', y='avg_sodium',
+                     labels={'category': 'Category', 'avg_sodium': 'Avg Sodium (mg)'},
+                     color='avg_sodium', color_continuous_scale='Reds',
+                     text='avg_sodium')
+        fig.update_traces(textposition='auto')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.divider()
+    
+    # ===== SECTION 4: NUTRITION QUALITY SCORES =====
+    st.markdown("## ⭐ Nutrition Quality Scores by Category")
+    st.markdown("*Protein Ratio: Higher = More protein per calorie | Fiber-Sugar Ratio: Higher = Healthier*")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 💪 Protein Efficiency (g per calorie)")
+        fig = px.bar(df_detailed.sort_values('protein_ratio', ascending=False), 
+                     x='category', y='protein_ratio',
+                     labels={'category': 'Category', 'protein_ratio': 'Protein/Calorie Ratio'},
+                     color='protein_ratio', color_continuous_scale='Reds',
+                     text='protein_ratio')
+        fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("### 🥗 Health Score (Fiber-to-Sugar Ratio)")
+        fig = px.bar(df_detailed.sort_values('fiber_sugar_ratio', ascending=False),
+                     x='category', y='fiber_sugar_ratio',
+                     labels={'category': 'Category', 'fiber_sugar_ratio': 'Fiber/Sugar Ratio'},
+                     color='fiber_sugar_ratio', color_continuous_scale='Greens',
+                     text='fiber_sugar_ratio')
+        fig.update_traces(textposition='auto', texttemplate='%{y:.3f}')
+        fig.update_layout(height=400, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.divider()
+    
+    # ===== SECTION 5: COMPREHENSIVE SUMMARY TABLE =====
+    st.markdown("## 📋 Complete Category Nutrition Summary")
+    
+    # Display as dataframe with nice formatting
+    summary_df = df_detailed.copy()
+    summary_df = summary_df.round(2)
+    
+    # Rename columns for display
+    display_cols = {
+        'category': 'Category',
+        'total_foods': '# Foods',
+        'avg_calories': 'Avg Cal',
+        'avg_protein': 'Avg Protein (g)',
+        'avg_fat': 'Avg Fat (g)',
+        'avg_carbs': 'Avg Carbs (g)',
+        'avg_fiber': 'Avg Fiber (g)',
+        'avg_sodium': 'Avg Na (mg)',
+        'avg_sugar': 'Avg Sugar (g)',
+        'protein_ratio': 'Protein Ratio',
+        'fiber_sugar_ratio': 'Fiber/Sugar'
     }
-    df_macro = pd.DataFrame(macro_data)
-    fig = px.pie(df_macro, values='Grams', names='Macronutrient',
-                 color_discrete_sequence=['#FF6B6B', '#FFA07A', '#4ECDC4'])
-    st.plotly_chart(fig, use_container_width=True)
+    
+    summary_df = summary_df.rename(columns=display_cols)
+    summary_df = summary_df[list(display_cols.values())]
+    
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    
+    # Download button for summary
+    csv_buffer = StringIO()
+    summary_df.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="📥 Download Analysis Summary (CSV)",
+        data=csv_buffer.getvalue(),
+        file_name=f"nutrition_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
 
 # TAB 4: TOP FOODS
 with tab4:
